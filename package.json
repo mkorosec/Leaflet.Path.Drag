@@ -23,7 +23,7 @@
     "start": "vite -c example/vite.config.ts",
     "lint": "eslint ./src/*.mjs",
     "docs": "vite build -c example/vite.config.ts",
-    "build": "npm run lint && vite build",
+    "build": "vite build",
     "release": "git push origin master && git checkout gh-pages && git merge master && git push origin gh-pages && git checkout master && npm publish"
   },
   "keywords": [

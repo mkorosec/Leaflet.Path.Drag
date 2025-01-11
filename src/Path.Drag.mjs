@@ -174,11 +174,16 @@ Handler.PathDrag = Handler.extend(
         }
       }
 
+      //console.log('startPoint', this._startPoint);
+      //console.log('containerPoint', containerPoint);
+
       const x = containerPoint.x;
       const y = containerPoint.y;
 
       const dx = x - this._startPoint.x;
       const dy = y - this._startPoint.y;
+
+      //console.log('dx:', dx, 'dy:', dy);
 
       // Send events only if point was moved
       if (dx || dy) {
@@ -191,15 +196,23 @@ Handler.PathDrag = Handler.extend(
           // we don't want that to happen on click
           this._path.bringToFront();
         }
-
+/*
         this._matrix[4] += dx;
         this._matrix[5] += dy;
+*/
+        this._matrix[4] = dx;
+        this._matrix[5] = dy;
 
         this._startPoint.x = x;
         this._startPoint.y = y;
 
         this._path.fire('predrag', evt);
-        this._path._transform(this._matrix);
+        
+        this._transformPoints(this._matrix);
+        this._path._updatePath();
+        this._path._project();
+        this._path._transform(null);
+//        this._path._transform(this._matrix);
         this._path.fire('drag', evt);
       }
     },
@@ -211,7 +224,8 @@ Handler.PathDrag = Handler.extend(
     _onDragEnd: function (evt) {
       const containerPoint = this._path._map.mouseEventToContainerPoint(evt);
       const moved = this.moved();
-
+      console.log('moved', moved);
+/*
       // apply matrix
       if (moved) {
         this._transformPoints(this._matrix);
@@ -221,7 +235,7 @@ Handler.PathDrag = Handler.extend(
 
         DomEvent.stop(evt);
       }
-
+*/
       DomEvent.off(document, 'mousemove touchmove', this._onDrag, this);
       DomEvent.off(document, 'mouseup touchend', this._onDragEnd, this);
 
@@ -267,13 +281,22 @@ Handler.PathDrag = Handler.extend(
       const crs = path._map.options.crs;
       const transformation = crs.transformation;
       const scale = crs.scale(path._map.getZoom());
+      const zoom = path._map.getZoom();
       const projection = crs.projection;
 
       const diff = transformation
         .untransform(px, scale)
         .subtract(transformation.untransform(point(0, 0), scale));
       const applyTransform = !dest;
-
+/*
+      console.log('diff', diff);
+      console.log('px', px);
+      console.log('object moved by', px);
+      console.log('dest', dest);
+      console.log('scale', scale);
+      console.log('projection', projection);
+      console.log('transformation', transformation);
+*/
       path._bounds = new LatLngBounds();
 
       // console.time('transform');
@@ -297,10 +320,29 @@ Handler.PathDrag = Handler.extend(
           latlngs = [latlngs];
           dest = [dest];
         }
+
+        const latLngOffset = this._calculateLatLngOffset(path._map, px, latlngs);
+
         for (let i = 0, len = rings.length; i < len; i++) {
           dest[i] = dest[i] || [];
           for (let j = 0, jj = rings[i].length; j < jj; j++) {
             const latlng = latlngs[i][j];
+            //console.log('map.latLngToLayerPoint', path._map.latLngToLayerPoint(latlng));
+            //TODO what's the right scale here?
+            //px -> latlng
+
+
+            dest[i][j].lat = latlng.lat+latLngOffset.lat;
+            dest[i][j].lng = latlng.lng+latLngOffset.lng;
+
+
+/*
+attempt1
+            //dest[i][j].lat = latlng.lat-px.y/zoom;
+            //dest[i][j].lng = latlng.lng+px.x/zoom;
+*/
+/*
+original            
             dest[i][j] = projection.unproject(
               projection.project(latlng)._add(diff)
             );
@@ -308,12 +350,39 @@ Handler.PathDrag = Handler.extend(
               path._bounds.extend(latlngs[i][j]);
               rings[i][j]._add(px);
             }
+*/            
           }
         }
       }
       return dest;
       // console.timeEnd('transform');
     },
+
+    _calculateLatLngOffset: function(map, px, latlngs) {
+      //TODO use centroid here
+      const pointCoordinates = latlngs[0][0];
+      console.log('pointCoordinates', pointCoordinates);
+
+      //project the point onto map, add px, then unproject
+      const pointProjectedOnMapPixels = map.latLngToLayerPoint(pointCoordinates);
+      console.log('pointProjectedOnMapPixels', pointProjectedOnMapPixels);
+
+      pointProjectedOnMapPixels.x += px.x;
+      pointProjectedOnMapPixels.y += px.y;
+
+
+      const pointCoordinatesAfterMove = map.layerPointToLatLng(pointProjectedOnMapPixels);
+      console.log('pointCoordinatesAfterMove', pointCoordinatesAfterMove);
+
+      const latLngOffset = {
+        lat: pointCoordinatesAfterMove.lat - pointCoordinates.lat,
+        lng: pointCoordinatesAfterMove.lng - pointCoordinates.lng
+      };
+      console.log('latLngOffset', latLngOffset);
+
+      return latLngOffset;
+    },
+
 
     /**
      * If you want to read the latlngs during the drag - your right,
